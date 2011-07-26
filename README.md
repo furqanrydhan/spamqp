@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-This tool requires amqplib
+This tool requires the Python amqplib package and access to an AMQP server (i.e. RabbitMQ).
 
 ## Installation
 
