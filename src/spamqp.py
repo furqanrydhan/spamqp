@@ -30,7 +30,7 @@ def declare(exchange_name, exchange_type, host='127.0.0.1', port=5672):
 def send(message, exchange_name, routing_key='#', host='127.0.0.1', port=5672):
     with _connection(host, port) as connection:
         with connection.channel() as channel:
-            channel.basic_publish(json.dumps(message), exchange=exchange_name, routing_key=routing_key)
+            channel.basic_publish(amqplib.client_0_8.Message(json.dumps(message)), exchange=exchange_name, routing_key=routing_key)
     
 def bind(exchange_name, queue_name, routing_key='#', host='127.0.0.1', port=5672):
     with _connection(host, port) as connection:
@@ -41,14 +41,11 @@ def bind(exchange_name, queue_name, routing_key='#', host='127.0.0.1', port=5672
 def receive(queue_name, host='127.0.0.1', port=5672):
     with _connection(host, port) as connection:
         with connection.channel() as channel:
-            ret = None
-            def _callback(message):
-                ret = json.loads(message.body)
-                channel.basic_ack(message.delivery_tag)
-            consumer_tag = channel.basic_consume(queue=queue_name, callback=_callback)
-            channel.wait()
-            channel.basic_cancel(consumer_tag)
-            return ret
+            while True:
+                message = channel.basic_get(queue=queue_name)
+                if message is not None:
+                    channel.basic_ack(message.delivery_tag)
+                    return json.loads(message.body)
 
 def listen(queue_name, callback, host='127.0.0.1', port=5672):
     with _connection(host, port) as connection:
