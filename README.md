@@ -12,6 +12,11 @@ or
 
 pip install -e "git+http://github.com/stylepage/spampqp.git#egg=spamqp"
 
+or
+
+git clone git@github.com:stylepage/spamqp.git spamqp
+pip install -e spamqp
+
 ## Examples
 
 ```python
