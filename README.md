@@ -6,17 +6,20 @@ This tool requires the Python amqplib package and access to an AMQP server (i.e.
 
 ## Installation
 
-```pip install spamqp
+```bash
+pip install spamqp
 ```
 
 or
 
-```pip install -e "git+http://github.com/stylepage/spampqp.git#egg=spamqp"
+```bash
+pip install -e "git+http://github.com/stylepage/spampqp.git#egg=spamqp"
 ```
 
 or
 
-```git clone git@github.com:stylepage/spamqp.git spamqp
+```bash
+git clone git@github.com:stylepage/spamqp.git spamqp
 pip install -e spamqp
 ```
 
