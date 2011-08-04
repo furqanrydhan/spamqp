@@ -15,7 +15,7 @@ def setup():
             'spamqp',
         ],
         install_requires=[
-            'pika==dev',
+            'pika',
         ],
         dependency_links=[
             'http://github.com/pika/pika/tarball/master#egg=pika',
