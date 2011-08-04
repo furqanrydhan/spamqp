@@ -15,8 +15,7 @@ def setup():
             'spamqp',
         ],
         install_requires=[
-            # N.B. amqplib package version 0.6 implements client version 0.8
-            'amqplib==0.6',
+            'pika==dev',
         ],
     )
 

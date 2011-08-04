@@ -4,79 +4,77 @@ import json
 import os
 import sys
 
-import amqplib.client_0_8 as amqp
+import pika
 
-class _channel(amqp.channel.Channel):
-    def __enter__(self):
-        return self
-    def __exit__(self, *args, **kwargs):
-        self.close()
-
-class _connection(amqp.Connection):
+class _connection(pika.adapters.blocking_connection.BlockingConnection):
     def __init__(self, host, port):
-        amqp.Connection.__init__(self, host=str(host) + ':' + str(port))
+        params = pika.ConnectionParameters(host=str(host), port=int(port), heartbeat=True)
+        pika.adapters.blocking_connection.BlockingConnection.__init__(self, params)
     def __enter__(self):
         return self
     def __exit__(self, *args, **kwargs):
         self.close()
-    def channel(self):
-        return _channel(self)
 
 
 
 # Imperative approach
+# For sending any significant quantity of messages, these are terrible, as the
+# overhead of settings up connections and channels for each message is
+# devastating to efficiency.  They're pretty simple to use, though, and there
+# are certain use cases.  Engineer beware, however.
 def declare(exchange_name, exchange_type, host='127.0.0.1', port=5672):
     with _connection(host, port) as connection:
-        with connection.channel() as channel:
-            channel.exchange_declare(
-                exchange=exchange_name,
-                type=exchange_type,
-                durable=True,
-                auto_delete=False
-            )
+        channel = connection.channel()
+        channel.exchange_declare(
+            exchange=exchange_name,
+            type=exchange_type,
+            durable=True,
+            auto_delete=False
+        )
 
 def send(message, exchange_name, routing_key='#', host='127.0.0.1', port=5672):
     with _connection(host, port) as connection:
-        with connection.channel() as channel:
-            channel.basic_publish(
-                amqp.Message(json.dumps(message)),
-                exchange=exchange_name,
-                routing_key=routing_key
-            )
+        channel = connection.channel()
+        channel.basic_publish(
+            body=json.dumps(message),
+            exchange=exchange_name,
+            routing_key=routing_key
+        )
     
 def bind(exchange_name, queue_name, routing_key='#', host='127.0.0.1', port=5672):
     with _connection(host, port) as connection:
-        with connection.channel() as channel:
-            channel.queue_declare(
-                queue=queue_name,
-                durable=True,
-                exclusive=False,
-                auto_delete=False
-            )
-            channel.queue_bind(
-                queue=queue_name,
-                exchange=exchange_name,
-                routing_key=routing_key
-            )
+        channel = connection.channel()
+        channel.queue_declare(
+            queue=queue_name,
+            durable=True,
+            exclusive=False,
+            auto_delete=False
+        )
+        channel.queue_bind(
+            queue=queue_name,
+            exchange=exchange_name,
+            routing_key=routing_key
+        )
     
 def receive(queue_name, host='127.0.0.1', port=5672):
     with _connection(host, port) as connection:
-        with connection.channel() as channel:
-            while True:
-                message = channel.basic_get(queue=queue_name)
-                if message is not None:
-                    channel.basic_ack(message.delivery_tag)
-                    return json.loads(message.body)
+        channel = connection.channel()
+        while True:
+            try:
+                (method, header, body) = channel.basic_get(queue=queue_name)
+                channel.basic_ack(method.delivery_tag)
+                return json.loads(body)
+            except (ValueError, AttributeError):
+                pass
 
 def listen(queue_name, callback, host='127.0.0.1', port=5672):
     with _connection(host, port) as connection:
-        with connection.channel() as channel:
-            def _callback(message):
-                callback(json.loads(message.body))
-                channel.basic_ack(message.delivery_tag)
-            channel.basic_consume(queue=queue_name, callback=_callback)
-            while True:
-                channel.wait()
+        channel = connection.channel()
+        def _callback(channel, method, header, body):
+            callback(json.loads(body))
+            channel.basic_ack(method.delivery_tag)
+        channel.basic_consume(queue=queue_name, callback=_callback)
+        channel.start_consuming()
 
 
 
@@ -125,7 +123,7 @@ class producer(_persistently_connected):
             )
     def produce(self, message, routing_key='#'):
         self._channel().basic_publish(
-            amqp.Message(json.dumps(message)),
+            body=json.dumps(message),
             exchange=self._exchange_name,
             routing_key=routing_key
         )
@@ -201,12 +199,11 @@ class consumer(_persistently_connected):
     # If you're creating an instance of this without subclassing, you can
     # call listen() and provide a callback method.
     def listen(self, callback):
-        def _callback(message):
-            callback(json.loads(message.body))
-            self._channel().basic_ack(message.delivery_tag)
+        def _callback(channel, method, header, body):
+            callback(json.loads(body))
+            self._channel().basic_ack(method.delivery_tag)
         self._channel().basic_consume(queue=self._queue_name, callback=_callback)
-        while True:
-            self._channel().wait()
+        self._channel().start_consuming()
     # If you're subclassing this, you can implement the process method, and
     # call loop().
     def loop(self):
