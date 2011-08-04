@@ -17,6 +17,9 @@ def setup():
         install_requires=[
             'pika==dev',
         ],
+        dependency_links=[
+            'http://github.com/pika/pika/tarball/master#egg=pika',
+        ],
     )
 
 if __name__ == '__main__':
