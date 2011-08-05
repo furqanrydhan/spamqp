@@ -2,16 +2,28 @@
 
 import json
 import os
+import socket
 import sys
 
 import pika
+
+class AMQPException(Exception):
+    def __init__(self, message=None):
+        self.message = message
+    def __str__(self):
+        return self.message or 'please check callstack'
+
+
 
 class _connection(pika.adapters.blocking_connection.BlockingConnection):
     def __init__(self, host, port):
         # TODO when we upgrade to a version of Pika that supports heartbeats properly, use it.
         # Presently 0.9.5 does not.
         params = pika.ConnectionParameters(host=str(host), port=int(port))#, heartbeat=True)
-        pika.adapters.blocking_connection.BlockingConnection.__init__(self, params)
+        try:
+            pika.adapters.blocking_connection.BlockingConnection.__init__(self, params)
+        except socket.error:
+            raise AMQPException('No AMQP server at ' + str(host) + ':' + str(port))
     def __enter__(self):
         return self
     def __exit__(self, *args, **kwargs):
