@@ -8,7 +8,9 @@ import pika
 
 class _connection(pika.adapters.blocking_connection.BlockingConnection):
     def __init__(self, host, port):
-        params = pika.ConnectionParameters(host=str(host), port=int(port), heartbeat=True)
+        # TODO when we upgrade to a version of Pika that supports heartbeats properly, use it.
+        # Presently 0.9.5 does not.
+        params = pika.ConnectionParameters(host=str(host), port=int(port))#, heartbeat=True)
         pika.adapters.blocking_connection.BlockingConnection.__init__(self, params)
     def __enter__(self):
         return self
@@ -73,7 +75,7 @@ def listen(queue_name, callback, host='127.0.0.1', port=5672):
         def _callback(channel, method, header, body):
             callback(json.loads(body))
             channel.basic_ack(method.delivery_tag)
-        channel.basic_consume(queue=queue_name, callback=_callback)
+        channel.basic_consume(_callback, queue=queue_name)
         channel.start_consuming()
 
 
@@ -202,7 +204,7 @@ class consumer(_persistently_connected):
         def _callback(channel, method, header, body):
             callback(json.loads(body))
             self._channel().basic_ack(method.delivery_tag)
-        self._channel().basic_consume(queue=self._queue_name, callback=_callback)
+        self._channel().basic_consume(_callback, queue=self._queue_name)
         self._channel().start_consuming()
     # If you're subclassing this, you can implement the process method, and
     # call loop().
