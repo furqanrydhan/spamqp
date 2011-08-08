@@ -208,7 +208,7 @@ class consumer(_persistently_connected):
                 self._channel().queue_bind(
                     queue=self._queue_name,
                     exchange=self._exchange_name,
-                    routing_key=routing_key
+                    routing_key=str(routing_key)
                 )
     # If you're creating an instance of this without subclassing, you can
     # call listen() and provide a callback method.
