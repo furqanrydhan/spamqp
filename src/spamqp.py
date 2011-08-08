@@ -224,3 +224,5 @@ class consumer(_persistently_connected):
         self.listen(callback=self.process)
     def process(self, message):
         raise NotImplemented
+    def purge(self):
+        self._channel().queue_purge()
