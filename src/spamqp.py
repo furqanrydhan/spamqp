@@ -137,7 +137,7 @@ class producer(_persistently_connected):
             )
     def produce(self, message, routing_key='#'):
         self._channel().basic_publish(
-            body=json.dumps(message),
+            body=json.dumps(message, default=lambda x: "<non-serializable data>"),
             exchange=self._exchange_name,
             routing_key=routing_key
         )
