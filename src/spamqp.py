@@ -7,6 +7,13 @@ import sys
 
 import pika
 
+
+
+DEFAULT_HOST = '127.0.0.1'
+DEFAULT_PORT = 5672
+
+
+
 class AMQPException(Exception):
     def __init__(self, message=None):
         self.message = message
@@ -16,7 +23,7 @@ class AMQPException(Exception):
 
 
 class _connection(pika.adapters.blocking_connection.BlockingConnection):
-    def __init__(self, host, port):
+    def __init__(self, host, port=DEFAULT_PORT):
         # TODO when we upgrade to a version of Pika that supports heartbeats properly, use it.
         # Presently 0.9.5 does not.
         params = pika.ConnectionParameters(host=str(host), port=int(port))#, heartbeat=True)
@@ -36,7 +43,7 @@ class _connection(pika.adapters.blocking_connection.BlockingConnection):
 # overhead of settings up connections and channels for each message is
 # devastating to efficiency.  They're pretty simple to use, though, and there
 # are certain use cases.  Engineer beware, however.
-def declare(exchange_name, exchange_type, host='127.0.0.1', port=5672):
+def declare(exchange_name, exchange_type, host=DEFAULT_HOST, port=DEFAULT_PORT):
     with _connection(host, port) as connection:
         channel = connection.channel()
         channel.exchange_declare(
@@ -46,7 +53,7 @@ def declare(exchange_name, exchange_type, host='127.0.0.1', port=5672):
             auto_delete=False
         )
 
-def send(message, exchange_name, routing_key='#', host='127.0.0.1', port=5672):
+def send(message, exchange_name, routing_key='#', host=DEFAULT_HOST, port=DEFAULT_PORT):
     with _connection(host, port) as connection:
         channel = connection.channel()
         channel.basic_publish(
@@ -55,7 +62,7 @@ def send(message, exchange_name, routing_key='#', host='127.0.0.1', port=5672):
             routing_key=routing_key
         )
     
-def bind(exchange_name, queue_name, routing_key='#', host='127.0.0.1', port=5672):
+def bind(exchange_name, queue_name, routing_key='#', host=DEFAULT_HOST, port=DEFAULT_PORT):
     with _connection(host, port) as connection:
         channel = connection.channel()
         channel.queue_declare(
@@ -70,7 +77,7 @@ def bind(exchange_name, queue_name, routing_key='#', host='127.0.0.1', port=5672
             routing_key=routing_key
         )
     
-def receive(queue_name, host='127.0.0.1', port=5672):
+def receive(queue_name, host=DEFAULT_HOST, port=DEFAULT_PORT):
     with _connection(host, port) as connection:
         channel = connection.channel()
         while True:
@@ -81,7 +88,7 @@ def receive(queue_name, host='127.0.0.1', port=5672):
             except (ValueError, AttributeError):
                 pass
 
-def listen(queue_name, callback, host='127.0.0.1', port=5672):
+def listen(queue_name, callback, host=DEFAULT_HOST, port=DEFAULT_PORT):
     with _connection(host, port) as connection:
         channel = connection.channel()
         def _callback(channel, method, header, body):
@@ -95,8 +102,8 @@ def listen(queue_name, callback, host='127.0.0.1', port=5672):
 # Class-based approach
 class _persistently_connected(object):
     def __init__(self, **kwargs):
-        self._host = kwargs.get('host', '127.0.0.1')
-        self._port = kwargs.get('port', 5672)
+        self._host = kwargs.get('host', DEFAULT_HOST)
+        self._port = kwargs.get('port', DEFAULT_PORT)
         self.__connection = None
         self.__channel = None
     def _connection(self):
@@ -145,9 +152,6 @@ class producer(_persistently_connected):
 class consumer(_persistently_connected):
     def __init__(self, **kwargs):
         _persistently_connected.__init__(self, **kwargs)
-        # You must subscribe to a queue; this parameter is required.
-        self._queue_name = kwargs.get('queue_name', None)
-        assert(self._queue_name is not None)
         # A queue is filled by one or more exchanges which route messages
         # they receive to queues which subscribe to various routing keys.
         # 
@@ -169,6 +173,15 @@ class consumer(_persistently_connected):
         # his queue... make sure you know who is.
         self._exchange_name = kwargs.get('exchange_name', None)
         self._exchange_type = kwargs.get('exchange_type', None)
+        # You must subscribe to a queue.  Almost everybody will want to
+        # provide this parameter; however, if you truly don't care what
+        # your queue is called (ie you don't care if you share it with
+        # anyone else and you don't care if you can find it again), then
+        # we're going to assume you want an auto-deleted exclusive queue.
+        self._queue_name = kwargs.get('queue_name', None)
+        self._temporary_and_exclusive = (self._queue_name is None)
+        if self._temporary_and_exclusive:
+            self._queue_name = '_'.join([os.uname()[1], 'pid', str(os.getpid())])
         self._routing_keys = kwargs.get('routing_keys', None)
         if 'routing_keys' not in kwargs and self._exchange_type == 'direct':
             self._routing_keys = ['#']
@@ -181,8 +194,12 @@ class consumer(_persistently_connected):
             # you really want to configure another kind, complain loudly and
             # I'll make these configurable.
             durable=True,
-            exclusive=False,
-            auto_delete=False
+            # If you are omitted a queue name, your queue is probably not that
+            # important (we will let it be deleted when you stop consuming),
+            # and probably you don't need to share it with anybody else (we'll
+            # make sure it's exclusive)
+            exclusive=self._temporary_and_exclusive,
+            auto_delete=self._temporary_and_exclusive
         )
         # If you've passed in sufficient information to identify the exchange,
         # delare it.  If the exchange already exists as you've described it,
