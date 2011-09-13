@@ -9,6 +9,13 @@ import pika
 
 
 
+try:
+    from _version import __version_info__, __version__, version
+except ImportError:
+    pass
+
+
+
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 5672
 
