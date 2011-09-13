@@ -1,18 +1,17 @@
 #!/usr/bin/env python
 
+__version_info__ = (0, 1, 2)
+__version__ = '.'.join([str(i) for i in __version_info__])
+version = __version__
+
+
+
 import json
 import os
 import socket
 import sys
 
 import pika
-
-
-
-try:
-    from _version import __version_info__, __version__, version
-except ImportError:
-    pass
 
 
 
