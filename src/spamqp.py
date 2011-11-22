@@ -108,13 +108,26 @@ def listen(queue_name, callback, host=DEFAULT_HOST, port=DEFAULT_PORT):
 # Class-based approach
 class _persistently_connected(object):
     def __init__(self, **kwargs):
-        self._host = kwargs.get('host', DEFAULT_HOST)
+        self._hosts = kwargs.get('hosts', [kwargs.get('host', DEFAULT_HOST)])
+        if isinstance(self._hosts, basestring):
+            self._hosts = self._hosts.split(',')
         self._port = kwargs.get('port', DEFAULT_PORT)
+        # Subclasses should perform additional initialization steps while overriding this, presumably ending in a call to self._reconnect()
+    def _reconnect(self, *args, **kwargs):
         self.__connection = None
         self.__channel = None
+        # Subclasses should perform additional reconnection steps while overriding this.
     def _connection(self):
         if self.__connection is None:
-            self.__connection = _connection(self._host, self._port)
+            for host in self._hosts:
+                try:
+                    self.__connection = _connection(host, self._port)
+                    self.__connection.add_on_close_callback(self._reconnect)
+                    break
+                except AMQPException:
+                    pass
+            else:
+                raise AMQPException('No AMQP server at ' + ','.join(self._hosts) + ':' + str(self._port))
         return self.__connection
     def _channel(self):
         if self.__channel is None:
@@ -134,6 +147,9 @@ class producer(_persistently_connected):
         # to be able to re-declare the exchange.
         self._exchange_type = kwargs.get('exchange_type', None)
         
+        self._reconnect()
+    def _reconnect(self, *args, **kwargs):
+        _persistently_connected._reconnect(self)
         # If you've passed in sufficient information to identify the exchange,
         # delare it.  If the exchange already exists as you've described it,
         # this is a no-op.  If it does not, we'll throw an error, which you'll
@@ -192,6 +208,9 @@ class consumer(_persistently_connected):
         if 'routing_keys' not in kwargs and self._exchange_type == 'direct':
             self._routing_keys = ['#']
         
+        self._reconnect()
+    def _reconnect(self, *args, **kwargs):
+        _persistently_connected._reconnect(self)
         # Always declare the queue.  If the queue already exists this is a
         # no-op.  If it does not, you'll be glad we declared it.
         self._channel().queue_declare(
@@ -205,7 +224,11 @@ class consumer(_persistently_connected):
             # and probably you don't need to share it with anybody else (we'll
             # make sure it's exclusive)
             exclusive=self._temporary_and_exclusive,
-            auto_delete=self._temporary_and_exclusive
+            auto_delete=self._temporary_and_exclusive,
+            # Notify when disconnected
+            #consumer_cancel_notify=True,
+            # Mirrored queue
+            arguments={'x-ha-policy':'all'}
         )
         # If you've passed in sufficient information to identify the exchange,
         # delare it.  If the exchange already exists as you've described it,
