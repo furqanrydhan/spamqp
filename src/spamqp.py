@@ -108,10 +108,18 @@ def listen(queue_name, callback, host=DEFAULT_HOST, port=DEFAULT_PORT):
 # Class-based approach
 class _persistently_connected(object):
     def __init__(self, **kwargs):
-        self._hosts = kwargs.get('hosts', [kwargs.get('host', DEFAULT_HOST)])
-        if isinstance(self._hosts, basestring):
-            self._hosts = self._hosts.split(',')
-        self._port = kwargs.get('port', DEFAULT_PORT)
+        hosts = kwargs.get('hosts', [kwargs.get('host', DEFAULT_HOST)])
+        if isinstance(hosts, basestring):
+            hosts = hosts.split(',')
+        default_port = kwargs.get('port', DEFAULT_PORT)
+        self._hosts = []
+        for host in hosts:
+            hostname = host.split(':')[0]
+            try:
+                port = int(host.split(':')[1])
+            except IndexError:
+                port = default_port
+            self._hosts.append((hostname, str(port)))
         # Subclasses should perform additional initialization steps while overriding this, presumably ending in a call to self._reconnect()
     def _reconnect(self, *args, **kwargs):
         self.__connection = None
@@ -119,15 +127,15 @@ class _persistently_connected(object):
         # Subclasses should perform additional reconnection steps while overriding this.
     def _connection(self):
         if self.__connection is None:
-            for host in self._hosts:
+            for (host, port) in self._hosts:
                 try:
-                    self.__connection = _connection(host, self._port)
+                    self.__connection = _connection(host, port)
                     self.__connection.add_on_close_callback(self._reconnect)
                     break
                 except AMQPException:
                     pass
             else:
-                raise AMQPException('No AMQP server at ' + ','.join(self._hosts) + ':' + str(self._port))
+                raise AMQPException('No AMQP server at ' + ','.join([':'.join([hostname, port]) for (hostname, port) in self._hosts]))
         return self.__connection
     def _channel(self):
         if self.__channel is None:
@@ -262,8 +270,13 @@ class consumer(_persistently_connected):
         def _callback(channel, method, header, body):
             callback(json.loads(body))
             self._channel().basic_ack(method.delivery_tag)
-        self._channel().basic_consume(_callback, queue=self._queue_name)
-        self._channel().start_consuming()
+        while True:
+            try:
+                self._channel().basic_consume(_callback, queue=self._queue_name)
+                self._channel().start_consuming()
+            except pika.exceptions.AMQPConnectionError:
+                self._reconnect()
+                continue
     # If you're subclassing this, you can implement the process method, and
     # call loop().
     def loop(self):
