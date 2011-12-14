@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-__version_info__ = (0, 1, 3)
+__version_info__ = (0, 1, 4)
 __version__ = '.'.join([str(i) for i in __version_info__])
 version = __version__
 
@@ -8,10 +8,10 @@ version = __version__
 
 import json
 import os
+import pika
+import random
 import socket
 import sys
-
-import pika
 
 
 
@@ -120,6 +120,7 @@ class _persistently_connected(object):
             except IndexError:
                 port = default_port
             self._hosts.append((hostname, str(port)))
+        random.shuffle(self._hosts)
         # Subclasses should perform additional initialization steps while overriding this, presumably ending in a call to self._reconnect()
     def _reconnect(self, *args, **kwargs):
         self.__connection = None
