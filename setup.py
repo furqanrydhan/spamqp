@@ -30,7 +30,7 @@ def setup():
             'spamqp',
         ],
         install_requires=[
-            'pika==0.9.5',
+            'pika==0.9.9',
         ],
         dependency_links=[
             # The important things here:
